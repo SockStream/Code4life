@@ -191,14 +191,20 @@ class Robot {
 	}
 	
 	private int RecupererMeilleurDiagnostique() {
+		int max_points = 0;
+		int meilleur_echantillon = -1;
 		for(Echantillon echantillon : world.liste_echantillons)
 		{
 			if (echantillon.available)
 			{
-				return echantillon.id;
+				if (echantillon.health > max_points)
+				{
+					max_points = echantillon.health;
+					meilleur_echantillon = echantillon.id;
+				}
 			}
 		}
-        return -1;
+		return meilleur_echantillon;
 	}
 
 	public String connecterDiagnostic(int id)
