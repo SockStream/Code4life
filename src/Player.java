@@ -11,7 +11,9 @@ import java.math.*;
 enum modulesEnum {
 	DIAGNOSIS,
 	MOLECULES,
-	LABORATORY
+	LABORATORY,
+	SAMPLES,
+	START_POS
 }
 
 class World {
@@ -27,6 +29,10 @@ class World {
 		nombre_molecules_D =0;
 		nombre_molecules_E =0;
 	}
+
+	public boolean echantillonsDisponibles() {
+		return false;
+	}
 }
 
 class Echantillon {
@@ -34,8 +40,9 @@ class Echantillon {
 	public int id;
 	public Boolean available;
 	public int health;
+	public int rank;
 	
-	public Echantillon (int _nombre_molecules_A, int _nombre_molecules_B, int _nombre_molecules_C, int _nombre_molecules_D, int _nombre_molecules_E, int _id, int _available, int _health)
+	public Echantillon (int _nombre_molecules_A, int _nombre_molecules_B, int _nombre_molecules_C, int _nombre_molecules_D, int _nombre_molecules_E, int _id, int _available, int _health, int _rank)
 	{
 		nombre_molecules_A = _nombre_molecules_A;
 		nombre_molecules_B = _nombre_molecules_B;
@@ -52,7 +59,14 @@ class Echantillon {
 		{
 			available = false;
 		}
-		System.err.println("id : " + available);
+		rank = _rank;
+		System.err.println("id : " + id + "\n" +
+				"nombre_molecules_A : " + nombre_molecules_A +
+				"rank : " + rank);
+	}
+
+	public int nombre_molecules() {
+		return (nombre_molecules_A + nombre_molecules_B + nombre_molecules_C + nombre_molecules_D + nombre_molecules_E);
 	}
 }
 
@@ -62,6 +76,7 @@ class Robot {
 	public List<Echantillon> echantillons;
 	public modulesEnum module_courant;
 	public World world;
+	public int nombre_echantillons_rejetes;
 	
 	public Robot ()
 	{
@@ -79,6 +94,17 @@ class Robot {
 		world = null;
 	}
 	
+	public String obtenir_sample()
+	{
+		int rank = 0;
+		rank = nombre_echantillons_a_analyser() + 1;
+		if (nombre_echantillons_rejetes > 0)
+		{
+			rank = rank - (nombre_echantillons_rejetes - 1);
+		}
+		return "CONNECT " + Integer.toString(rank);
+	}
+	
 	public String allerModule(modulesEnum module)
 	{
 		String commande = "GOTO ";
@@ -93,6 +119,8 @@ class Robot {
 		case MOLECULES:
 			commande += "MOLECULES";
 			break;
+		case SAMPLES:
+			commande += "SAMPLES";
 		default:
 			break;
 		}
@@ -100,13 +128,28 @@ class Robot {
 	}
 
 	public String GenerateMove() {
-		//Obvious, si on a pas de diagnostique, on va aller en chercher un
-		if (echantillons.size() == 0 && ! module_courant.equals(modulesEnum.DIAGNOSIS))
+		if (echantillons.size() == 0 && world.echantillonsDisponibles() && module_courant.equals(modulesEnum.DIAGNOSIS))
+		{
+			return connecterDiagnostic(RecupererMeilleurDiagnostique());
+		}
+		
+		//Obvious, si on a pas de diagnostique et qu'il n'y en a pas de dispo, on va aller chercher un échantillon
+		if (echantillons.size() == 0 && ! module_courant.equals(modulesEnum.SAMPLES))
+		{
+			return allerModule(modulesEnum.SAMPLES);
+		}
+		if (module_courant.equals(modulesEnum.SAMPLES) && (nombre_echantillons_a_analyser() + nombre_echantillons_rejetes) < 3)
+		{
+			return obtenir_sample();
+		}
+		//si on a un échantillon pas analysé, on va aller au module DIAGNOSIS
+		if (nombre_echantillons_a_analyser() > 0 && ! module_courant.equals(modulesEnum.DIAGNOSIS))
 		{
 			return allerModule(modulesEnum.DIAGNOSIS);
 		}
-		//Si on a pas de diagnostique et qu'on est au module, on va en télécharger un
-		if (echantillons.size() == 0 && module_courant.equals(modulesEnum.DIAGNOSIS))
+		
+		//si on a pas de diagnostique analysé et qu'on est au module DIAGNOSIS, on va en télécharger un
+		if (echantillons.size() > 0 && echantillons.get(0).nombre_molecules_A < 0 && module_courant.equals(modulesEnum.DIAGNOSIS))
 		{
 			return connecterDiagnostic(RecupererMeilleurDiagnostique());
 		}
@@ -134,6 +177,18 @@ class Robot {
 		throw new UnsupportedOperationException("AUCUNE DECISION PRISE");
 	}
 	
+	private int nombre_echantillons_a_analyser() {
+		int compteur = 0;
+		for (Echantillon echantillon : echantillons)
+		{
+			if (echantillon.nombre_molecules_A < 0)
+			{
+				compteur ++;
+			}
+		}
+		return compteur;
+	}
+
 	private String obtenir_molecules(Echantillon echantillon)
 	{
 		if (echantillon.nombre_molecules_A > (nombre_molecules_A + expertiseA))
@@ -191,13 +246,13 @@ class Robot {
 	}
 	
 	private int RecupererMeilleurDiagnostique() {
-		int max_points = 0;
+		int max_points = -1;
 		int meilleur_echantillon = -1;
-		for(Echantillon echantillon : world.liste_echantillons)
+		for(Echantillon echantillon : echantillons)
 		{
-			if (echantillon.available)
+			if (echantillon.nombre_molecules_A < 0)
 			{
-				if (echantillon.health > max_points)
+				if (echantillon.health >= max_points)
 				{
 					max_points = echantillon.health;
 					meilleur_echantillon = echantillon.id;
@@ -210,6 +265,21 @@ class Robot {
 	public String connecterDiagnostic(int id)
 	{
 		return "CONNECT " + Integer.toString(id);
+	}
+
+	public boolean peut_gerer(Echantillon _echantillon) {
+		if (
+				(
+					(_echantillon.nombre_molecules_A - expertiseA) + 
+					(_echantillon.nombre_molecules_B - expertiseB) + 
+					(_echantillon.nombre_molecules_C - expertiseC) + 
+					(_echantillon.nombre_molecules_D - expertiseD) + 
+					(_echantillon.nombre_molecules_E - expertiseE)
+				) > 10) 
+		{
+			return false;
+		}
+		return true;
 	}
 }
 
@@ -231,6 +301,7 @@ class Player {
         // game loop
         while (true) {
         	Robot robot;
+        	myRobot.nombre_echantillons_rejetes = 0;
             for (int i = 0; i < 2; i++) {
             	if (i == 0)
             	{
@@ -291,11 +362,18 @@ class Player {
                 int costD = in.nextInt();
                 int costE = in.nextInt();
                 
-                Echantillon _echantillon = new Echantillon (costA, costB, costC, costD, costE, sampleId, carriedBy, health);
+                Echantillon _echantillon = new Echantillon (costA, costB, costC, costD, costE, sampleId, carriedBy, health, rank);
                 myWorld.liste_echantillons.add(_echantillon);
                 if (carriedBy == 0)
                 {
-                	myRobot.echantillons.add(_echantillon);
+                	if (myRobot.peut_gerer(_echantillon))
+                	{
+                		myRobot.echantillons.add(_echantillon);
+                	}
+                	else
+                	{
+	                	myRobot.nombre_echantillons_rejetes += 1;
+                	}
                 }
                 if (carriedBy == 1)
                 {
@@ -327,7 +405,11 @@ class Player {
 		}
 		else if (target.toUpperCase().equals("START_POS"))
 		{
-			return modulesEnum.LABORATORY;
+			return modulesEnum.START_POS;
+		}
+		else if (target.toUpperCase().equals("SAMPLES"))
+		{
+			return modulesEnum.SAMPLES;
 		}
 		else
 		{
