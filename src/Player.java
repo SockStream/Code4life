@@ -52,6 +52,7 @@ class Echantillon {
 		{
 			available = false;
 		}
+		System.err.println("id : " + available);
 	}
 }
 
@@ -60,6 +61,7 @@ class Robot {
 	int expertiseA, expertiseB, expertiseC, expertiseD, expertiseE;
 	public List<Echantillon> echantillons;
 	public modulesEnum module_courant;
+	public World world;
 	
 	public Robot ()
 	{
@@ -74,6 +76,7 @@ class Robot {
 		expertiseD = 0;
 		expertiseE = 0;
 		echantillons = new ArrayList<Echantillon>();
+		world = null;
 	}
 	
 	public String allerModule(modulesEnum module)
@@ -92,15 +95,116 @@ class Robot {
 			break;
 		default:
 			break;
-		
 		}
         return commande;
 	}
+
+	public String GenerateMove() {
+		//Obvious, si on a pas de diagnostique, on va aller en chercher un
+		if (echantillons.size() == 0 && ! module_courant.equals(modulesEnum.DIAGNOSIS))
+		{
+			return allerModule(modulesEnum.DIAGNOSIS);
+		}
+		//Si on a pas de diagnostique et qu'on est au module, on va en télécharger un
+		if (echantillons.size() == 0 && module_courant.equals(modulesEnum.DIAGNOSIS))
+		{
+			return connecterDiagnostic(RecupererMeilleurDiagnostique());
+		}
+		//Si on a un diagnostique, qu'on a pas les molécules nécessaires et qu'on est pas au bon module, on va aller au module MOLECULES
+		if (echantillons.size() > 0 && !on_a_molecules_pour_medicament(echantillons.get(0)) && ! module_courant.equals(modulesEnum.MOLECULES))
+		{
+			return allerModule(modulesEnum.MOLECULES);
+		}
+		//si on a un diagnostique, qu'on a pas les molécules nécessaires et qu'on est au module MOLECULES, on va récupérer les molécules correspondantes
+		if (echantillons.size() > 0 && !on_a_molecules_pour_medicament(echantillons.get(0)) && module_courant.equals(modulesEnum.MOLECULES))
+		{
+			return obtenir_molecules(echantillons.get(0));
+		}
+		//si on a un diagnostique, qu'on a les molécules nécessaires mais qu'on est pas au molule LABORATORY, on y va
+		if (echantillons.size() > 0 && on_a_molecules_pour_medicament(echantillons.get(0)) && !module_courant.equals(modulesEnum.LABORATORY))
+		{
+			return allerModule(modulesEnum.LABORATORY);
+		}
+		//si on a un diagnostique, qu'on a les molécules nécessaires et qu'on est pas au molule LABORATORY, on uploade
+		if (echantillons.size() > 0 && on_a_molecules_pour_medicament(echantillons.get(0)) && module_courant.equals(modulesEnum.LABORATORY))
+		{
+			return connecterLaboratory(echantillons.get(0).id);
+		}
+
+		throw new UnsupportedOperationException("AUCUNE DECISION PRISE");
+	}
 	
-	/*public String connecter()
+	private String obtenir_molecules(Echantillon echantillon)
 	{
-		return "CONNECT";
-	}*/
+		if (echantillon.nombre_molecules_A > (nombre_molecules_A + expertiseA))
+		{
+			return "CONNECT " + "A";
+		}
+		if (echantillon.nombre_molecules_B > (nombre_molecules_B + expertiseB))
+		{
+			return "CONNECT " + "B";
+		}
+		if (echantillon.nombre_molecules_C > (nombre_molecules_C + expertiseC))
+		{
+			return "CONNECT " + "C";
+		}
+		if (echantillon.nombre_molecules_D > (nombre_molecules_D + expertiseD))
+		{
+			return "CONNECT " + "D";
+		}
+		if (echantillon.nombre_molecules_E > (nombre_molecules_E + expertiseE))
+		{
+			return "CONNECT " + "E";
+		}
+
+		throw new UnsupportedOperationException("ON PENSE PAR ERREUR QU'ON A BESOIN DE MOLECULES");
+	}
+	
+	private Boolean on_a_molecules_pour_medicament(Echantillon echantillon)
+	{
+		if (echantillon.nombre_molecules_A > (nombre_molecules_A + expertiseA))
+		{
+			return false;
+		}
+		if (echantillon.nombre_molecules_B > (nombre_molecules_B + expertiseB))
+		{
+			return false;
+		}
+		if (echantillon.nombre_molecules_C > (nombre_molecules_C + expertiseC))
+		{
+			return false;
+		}
+		if (echantillon.nombre_molecules_D > (nombre_molecules_D + expertiseD))
+		{
+			return false;
+		}
+		if (echantillon.nombre_molecules_E > (nombre_molecules_E + expertiseE))
+		{
+			return false;
+		}
+		return true;
+	}
+	
+	private String connecterLaboratory(int id_echantillon)
+	{
+		return "CONNECT " + id_echantillon;
+	}
+	
+	private int RecupererMeilleurDiagnostique() {
+		for(Echantillon echantillon : world.liste_echantillons)
+		{
+			if (echantillon.available)
+			{
+				return echantillon.id;
+			}
+		}
+        return -1;
+	}
+
+	public String connecterDiagnostic(int id)
+	{
+		return "CONNECT " + Integer.toString(id);
+	}
 }
 
 class Player {
@@ -130,6 +234,7 @@ class Player {
             	{
             		robot = otherRobot;
             	}
+            	robot.echantillons.clear();
                 String target = in.next();
                 robot.module_courant = String_To_Module(target);
                 int eta = in.nextInt();
@@ -154,6 +259,7 @@ class Player {
                 robot.expertiseD = expertiseD;
                 int expertiseE = in.nextInt();
                 robot.expertiseE = expertiseE;
+                robot.world = myWorld;
             }
             int availableA = in.nextInt();
             myWorld.nombre_molecules_A = availableA;
@@ -181,13 +287,22 @@ class Player {
                 
                 Echantillon _echantillon = new Echantillon (costA, costB, costC, costD, costE, sampleId, carriedBy, health);
                 myWorld.liste_echantillons.add(_echantillon);
+                if (carriedBy == 0)
+                {
+                	myRobot.echantillons.add(_echantillon);
+                }
+                if (carriedBy == 1)
+                {
+                	otherRobot.echantillons.add(_echantillon);
+                }
                 
             }
 
             // Write an action using System.out.println()
             // To debug: System.err.println("Debug messages...");
-
-            System.out.println("GOTO DIAGNOSIS");
+            String commande = myRobot.GenerateMove();
+            System.out.println(commande);
+            //System.out.println("GOTO DIAGNOSIS");
         }
     }
 
