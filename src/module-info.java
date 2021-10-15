@@ -1,0 +1,2 @@
+module Code4life {
+}
